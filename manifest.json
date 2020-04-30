@@ -1,0 +1,45 @@
+{
+  "author": "Mozilla IoT",
+  "description": "W3C Web of Things adapter",
+  "gateway_specific_settings": {
+    "webthings": {
+      "exec": "{nodeLoader} {path}",
+      "primary_type": "adapter",
+      "strict_max_version": "*",
+      "strict_min_version": "0.10.0",
+      "enabled": true
+    }
+  },
+  "homepage_url": "https://github.com/mozilla-iot/thing-url-adapter",
+  "id": "w3c-web-of-things-adapter",
+  "license": "MPL-2.0",
+  "manifest_version": 1,
+  "name": "W3C Web of Things adapter",
+  "options": {
+    "default": {
+      "urls": [],
+      "pollInterval": 5
+    },
+    "schema": {
+      "type": "object",
+      "required": [
+        "urls",
+        "pollInterval"
+      ],
+      "properties": {
+        "urls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pollInterval": {
+          "description": "The interval, in seconds, at which to poll property values.",
+          "type": "number"
+        }
+      }
+    }
+  },
+  "short_name": "Web Thing",
+  "version": "0.4.6"
+}
