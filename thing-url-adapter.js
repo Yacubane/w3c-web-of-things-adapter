@@ -118,6 +118,8 @@ class ThingURLDevice extends Device {
     this.scheduledUpdate = null;
     this.closing = false;
     this.actionsList=[];
+    this.eventsList={};
+    this.eventObservers={};
 
     for (const actionName in description.actions) {
       const action = description.actions[actionName];
@@ -143,6 +145,7 @@ class ThingURLDevice extends Device {
           return l;
         });
       }
+      this.eventsList[eventName] = event;
       this.addEvent(eventName, event);
     }
 
@@ -241,6 +244,19 @@ class ThingURLDevice extends Device {
         this.createWebSocket();
       }
     } else {
+
+
+      for (const key in this.eventsList) {
+        var value =  this.eventsList[key];
+        for (const form of value.forms) {
+          console.log("##### CREAING WS0 " + form.href);
+          if(form.href.startsWith("ws://")) {
+            this.createWebSocket(key, form.href);
+          }
+        }
+
+      }
+      
       // If there's no websocket endpoint, poll the device for updates.
       // eslint-disable-next-line no-lonely-if
       if (!this.scheduledUpdate) {
@@ -262,100 +278,35 @@ class ThingURLDevice extends Device {
     }
   }
 
-  createWebSocket() {
-    if (this.closing) {
-      return;
-    }
+  createWebSocket(eventName, url) {
+    console.log("CREAING WS");
+    this.eventObservers[eventName] = new WebSocket(url);
 
-    this.ws = new WebSocket(this.wsUrl);
-
-    this.ws.on('open', () => {
-      this.connectedNotify(true);
-      this.wsBackoff = WS_INITIAL_BACKOFF;
-
-      if (this.events.size > 0) {
-        // Subscribe to all events
-        const msg = {
-          messageType: ADD_EVENT_SUBSCRIPTION,
-          data: {},
-        };
-
-        this.events.forEach((_value, key) => {
-          msg.data[key] = {};
-        });
-
-        this.ws.send(JSON.stringify(msg));
-      }
-
-      this.pingInterval = setInterval(() => {
-        this.ws.ping();
-      }, PING_INTERVAL);
+    this.eventObservers[eventName].on('open', () => {
+      console.log("OPEN WS");
     });
 
-    this.ws.on('message', (data) => {
-      try {
-        const msg = JSON.parse(data);
-
-        switch (msg.messageType) {
-          case PROPERTY_STATUS: {
-            for (const [name, value] of Object.entries(msg.data)) {
-              const property = this.findProperty(name);
-              if (property) {
-                property.getValue().then((oldValue) => {
-                  if (value !== oldValue) {
-                    property.setCachedValue(value);
-                    this.notifyPropertyChanged(property);
-                  }
-                });
-              }
-            }
-            break;
-          }
-          case ACTION_STATUS: {
-            for (const action of Object.values(msg.data)) {
-              const requestedAction = this.requestedActions.get(action.href);
-              if (requestedAction) {
-                requestedAction.status = action.status;
-                requestedAction.timeRequested = action.timeRequested;
-                requestedAction.timeCompleted = action.timeCompleted;
-                this.actionNotify(requestedAction);
-              }
-            }
-            break;
-          }
-          case EVENT: {
-            for (const [name, event] of Object.entries(msg.data)) {
-              this.createEvent(name, event);
-            }
-            break;
-          }
-        }
-      } catch (e) {
-        console.log(`Error receiving websocket message: ${e}`);
-      }
+    this.eventObservers[eventName].on('message', (data) => {
+      const msg = JSON.parse(data);
+      console.log("CREATING EVENT");
+      var event = {};
+      event.data = msg;
+      this.createEvent(eventName, event);
     });
 
     const cleanupAndReopen = () => {
-      this.connectedNotify(false);
-
-      if (this.pingInterval) {
-        clearInterval(this.pingInterval);
-        this.pingInterval = null;
-      }
-
-      this.ws.removeAllListeners('close');
-      this.ws.removeAllListeners('error');
-      this.ws.close();
-      this.ws = null;
+      this.eventObservers[eventName].removeAllListeners('close');
+      this.eventObservers[eventName].removeAllListeners('error');
+      this.eventObservers[eventName].close();
+      this.eventObservers[eventName] = null;
 
       setTimeout(() => {
-        this.wsBackoff = Math.min(this.wsBackoff * 2, WS_MAX_BACKOFF);
-        this.createWebSocket();
-      }, this.wsBackoff);
+        this.createWebSocket(eventName, url);
+      }, 1000);
     };
 
-    this.ws.on('close', cleanupAndReopen);
-    this.ws.on('error', cleanupAndReopen);
+    this.eventObservers[eventName].on('close', cleanupAndReopen);
+    this.eventObservers[eventName].on('error', cleanupAndReopen);
   }
 
   async poll() {
@@ -445,16 +396,10 @@ class ThingURLDevice extends Device {
   }
 
   createEvent(eventName, event) {
-    const eventId = (event.data && event.data.hasOwnProperty('id')) ?
-      event.data.id :
-      `${eventName}-${event.timestamp}`;
+    const eventId = `${eventName}-${event.timestamp}`;
 
-    if (this.notifiedEvents.has(eventId)) {
-      return;
-    }
-    if (!event.hasOwnProperty('timestamp')) {
-      event.timestamp = new Date().toISOString();
-    }
+    event.timestamp = new Date().toISOString();
+    
     this.notifiedEvents.add(eventId);
     const e = new Event(this,
                         eventName,
