@@ -14,6 +14,7 @@ const fetch = require('node-fetch');
 const manifest = require('./manifest.json');
 const {URL} = require('url');
 const WebSocket = require('ws');
+const TransformerW3C = require('./transformer.js');
 
 const {
   Adapter,
@@ -467,7 +468,7 @@ class ThingURLDevice extends Device {
   performAction(action) {
     action.start();
 
-    return fetch("http://192.168.100.213:8082/counter/actions/increment", {
+    return fetch(TransformerW3C.getUlr(action), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -569,6 +570,7 @@ class ThingURLAdapter extends Adapter {
     let data;
     try {
       data = JSON.parse(text);
+      data = TransformerW3C.transformData(data);
     } catch (e) {
       console.log(`Failed to parse description at ${url}: ${e}`);
       return;
