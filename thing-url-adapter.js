@@ -9,6 +9,7 @@
 'use strict';
 const { HttpReadPropertyOpHandler,
   HttpWritePropertyOpHandler,
+  HttpInvokeActionOpHandler,
   HttpLongPollingObservePropertyOpHandler,
   HttpLongPollingSubscribeEventOpHandler
 } = require('./base-op-handlers.js');
@@ -19,7 +20,7 @@ const fetch = require('node-fetch');
 const manifest = require('./manifest.json');
 const { URL } = require('url');
 const WebSocket = require('ws');
-const TransformerW3C = require('./transformer.js');
+const W3CTransformer = require('./transformer.js');
 
 const {
   Adapter,
@@ -166,34 +167,19 @@ class ThingURLDevice extends Device {
     this.notifiedEvents = new Set();
     this.scheduledUpdate = null;
     this.closing = false;
-    this.actionsList = [];
+    this.actionsList = {};
+    this.actionInvokers = {};
     this.eventsList = {};
     this.eventSubscriptions = {};
 
     for (const actionName in description.actions) {
       const action = description.actions[actionName];
-      if (action.hasOwnProperty('forms')) {
-        action.forms = action.forms.map((l) => {
-          if (!l.href.startsWith('http://') && !l.href.startsWith('https://')) {
-            l.proxy = true;
-          }
-          return l;
-        });
-      }
       this.actionsList[actionName] = action;
       this.addAction(actionName, action);
     }
 
     for (const eventName in description.events) {
       const event = description.events[eventName];
-      if (event.hasOwnProperty('forms')) {
-        event.forms = event.forms.map((l) => {
-          if (!l.href.startsWith('http://') && !l.href.startsWith('https://')) {
-            l.proxy = true;
-          }
-          return l;
-        });
-      }
       this.eventsList[eventName] = event;
       this.addEvent(eventName, event);
     }
@@ -213,7 +199,19 @@ class ThingURLDevice extends Device {
     if (Adapter.prototype.hasOwnProperty('handleDeviceSaved') && !now) {
       return;
     }
-
+    for (const actionName in this.actionsList) {
+      var value = this.actionsList[actionName];
+      for (const form of value.forms) {
+        const invokeActionHandlerClasses = [HttpInvokeActionOpHandler];
+        var invokeActionHandler = null;
+        for (const invokeActionHandlerClass of invokeActionHandlerClasses) {
+          if (invokeActionHandlerClass.isApplicable(form)) {
+            invokeActionHandler = invokeActionHandlerClass.build(form);
+          }
+        }
+      }
+      this.actionInvokers[actionName] = invokeActionHandler;
+    }
 
     for (const eventName in this.eventsList) {
       var value = this.eventsList[eventName];
@@ -298,48 +296,20 @@ class ThingURLDevice extends Device {
 
   performAction(action) {
     action.start();
-
-    return fetch(TransformerW3C.getUlr(action), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({ [action.name]: { input: action.input } }),
-    }).then((res) => {
-      return res.json();
-    }).then((res) => {
-      this.requestedActions.set(res[action.name].href, action);
-    }).catch((e) => {
-      console.log(`Failed to perform action: ${e}`);
-      action.status = 'error';
-      this.actionNotify(action);
-    });
+    let invoker = this.actionInvokers[action.name];
+    if (invoker) {
+      return invoker.invokeAction(action.input, action.input).then((res) => {
+        this.requestedActions.set(action.name, action);
+      }).catch((e) => {
+        console.log(`Failed to perform action: ${e}`);
+        action.status = 'error';
+        this.actionNotify(action);
+      });
+    }
   }
 
   cancelAction(actionId, actionName) {
-    let promise;
-
-    this.requestedActions.forEach((action, actionHref) => {
-      if (action.name === actionName && action.id === actionId) {
-        promise = fetch(actionHref, {
-          method: 'DELETE',
-          headers: {
-            Accept: 'application/json',
-          },
-        }).catch((e) => {
-          console.log(`Failed to cancel action: ${e}`);
-        });
-
-        this.requestedActions.delete(actionHref);
-      }
-    });
-
-    if (!promise) {
-      promise = Promise.resolve();
-    }
-
-    return promise;
+    console.log(`Cancelling actions is unimplemented`);
   }
 }
 
@@ -401,7 +371,7 @@ class ThingURLAdapter extends Adapter {
     let data;
     try {
       data = JSON.parse(text);
-      data = TransformerW3C.transformData(data);
+      data = W3CTransformer.transformData(data);
     } catch (e) {
       console.log(`Failed to parse description at ${url}: ${e}`);
       return;

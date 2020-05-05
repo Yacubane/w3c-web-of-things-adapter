@@ -3,11 +3,13 @@ const { Subscription, OpHandler,
     WritePropertyOpHandler,
     ObservePropertyOpHandler,
     UnobservePropertyOpHandler,
+    InvokeActionOpHandler,
     SubscribeEventOpHandler,
     UnsubscribeEventOpHandler
 } = require('./skeleton-op-handlers.js');
 
 const fetch = require('node-fetch');
+var URITemplate = require('urijs/src/URITemplate');
 
 class HttpWritePropertyOpHandler extends WritePropertyOpHandler {
     constructor(href) {
@@ -74,6 +76,40 @@ class HttpReadPropertyOpHandler extends ReadPropertyOpHandler {
         return new HttpReadPropertyOpHandler(form.href);
     }
 }
+
+class HttpInvokeActionOpHandler extends InvokeActionOpHandler {
+    constructor(href) {
+        super();
+        this.href = href;
+    }
+
+    invokeAction(data, uriVariables = {}) {
+        let uri = URITemplate(this.href);
+        uri = uri.expand(uriVariables);
+        return fetch(uri, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+            },
+            body: JSON.stringify(data),
+        }).then((res) => {
+            return res.json();
+        })
+    }
+
+    static isApplicable(form) {
+        if (form.href.startsWith("http") && !form.subprotocol) {
+            return true;
+        }
+        return false;
+    }
+
+    static build(form) {
+        return new HttpInvokeActionOpHandler(form.href);
+    }
+}
+
 
 class HttpLongPollingSubscription extends Subscription {
     constructor(href, callback) {
@@ -155,6 +191,7 @@ class HttpLongPollingSubscribeEventOpHandler extends SubscribeEventOpHandler {
 
 module.exports = {
     HttpReadPropertyOpHandler, HttpWritePropertyOpHandler,
+    HttpInvokeActionOpHandler,
     HttpLongPollingObservePropertyOpHandler,
     HttpLongPollingSubscribeEventOpHandler
 };

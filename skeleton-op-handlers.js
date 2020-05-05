@@ -37,6 +37,12 @@ class UnobservePropertyOpHandler extends OpHandler {
     }
 }
 
+class InvokeActionOpHandler extends OpHandler {
+    invokeAction(data, uriVariables) {
+        throw 'Unimplemented';
+    }
+}
+
 class SubscribeEventOpHandler extends OpHandler {
     observeProperty(callback) {
         throw 'Unimplemented';
@@ -53,5 +59,6 @@ module.exports = {
     Subscription, OpHandler,
     ReadPropertyOpHandler, WritePropertyOpHandler,
     ObservePropertyOpHandler, UnobservePropertyOpHandler,
+    InvokeActionOpHandler,
     SubscribeEventOpHandler, UnsubscribeEventOpHandler
 };

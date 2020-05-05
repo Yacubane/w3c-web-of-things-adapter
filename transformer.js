@@ -1,4 +1,4 @@
-class TransformerW3C {
+class W3CTransformer {
 
   static transformData(data) {
     for(let actionName in data.actions) {
@@ -13,14 +13,6 @@ class TransformerW3C {
     return data;
   }
 
-  static getUlr(action) {
-    let query = Object.keys(action.input)
-      .map(k => encodeURIComponent(k) + '=' + encodeURIComponent(action.input[k]))
-      .join('&');
-    if(!!query) query = "?" + query;
-    return `${action.device.url}/actions/${action.name}${query}`;
-  }
-
 }
 
-module.exports = TransformerW3C;
+module.exports = W3CTransformer;

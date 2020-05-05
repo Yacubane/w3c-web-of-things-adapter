@@ -68,7 +68,8 @@
   "dependencies": {
     "dnssd": "^0.4.1",
     "node-fetch": "^2.6.0",
-    "ws": "^7.2.1"
+    "ws": "^7.2.1",
+    "urijs": "^1.19.2"
   },
   "devDependencies": {
     "babel-eslint": "^10.0.3",
