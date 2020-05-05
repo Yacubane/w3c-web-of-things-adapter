@@ -29,7 +29,9 @@
     "SHA256SUMS",
     "index.js",
     "manifest.json",
-    "thing-url-adapter.js"
+    "thing-url-adapter.js",
+    "base-op-handlers.js",
+    "skeleton-op-handlers.js"
   ],
   "moziot": {
     "api": {

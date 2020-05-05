@@ -7,12 +7,17 @@
  */
 
 'use strict';
+const { HttpReadPropertyOpHandler,
+  HttpWritePropertyOpHandler,
+  HttpLongPollingObservePropertyOpHandler,
+  HttpLongPollingSubscribeEventOpHandler
+} = require('./base-op-handlers.js');
 
 const crypto = require('crypto');
 const dnssd = require('dnssd');
 const fetch = require('node-fetch');
 const manifest = require('./manifest.json');
-const {URL} = require('url');
+const { URL } = require('url');
 const WebSocket = require('ws');
 const TransformerW3C = require('./transformer.js');
 
@@ -39,12 +44,85 @@ const POLL_INTERVAL = 5 * 1000;
 const WS_INITIAL_BACKOFF = 1000;
 const WS_MAX_BACKOFF = 30 * 1000;
 
-class ThingURLProperty extends Property {
-  constructor(device, name, url, propertyDescription) {
+class ThingProperty extends Property {
+  constructor(device, name, forms, propertyDescription) {
     super(device, name, propertyDescription);
-    this.url = url;
     this.setCachedValue(propertyDescription.value);
     this.device.notifyPropertyChanged(this);
+
+    this.ops = {};
+    const opsTypes = ["readproperty", "writeproperty",
+      "observeproperty", "unobserveproperty"];
+    for (const opType of opsTypes) {
+      this.ops[opType] = [];
+    }
+
+    for (const form of forms) {
+      if (!form.op) {
+        form.op = ["readproperty", "writeproperty"];
+      }
+    }
+
+    for (const form of forms) {
+      for (const op of form.op) {
+        this.ops[op].push(form);
+      }
+    }
+
+    var protocolImpls = [HttpLongPollingObservePropertyOpHandler];
+    const observeModes = this.ops["observeproperty"];
+    for (const form of observeModes) {
+      for (const protocolImpl of protocolImpls) {
+        if (protocolImpl.isApplicable(form)) {
+          this.observePropertyHandler = protocolImpl.build(form);
+        }
+      }
+    }
+
+    const pollModes = this.ops["readproperty"];
+    protocolImpls = [HttpReadPropertyOpHandler];
+    for (const form of pollModes) {
+      for (const protocolImpl of protocolImpls) {
+        if (protocolImpl.isApplicable(form)) {
+          this.readPropertyHandler = protocolImpl.build(form);
+        }
+      }
+    }
+
+    const writeModes = this.ops["writeproperty"];
+    protocolImpls = [HttpWritePropertyOpHandler];
+    for (const form of writeModes) {
+      for (const protocolImpl of protocolImpls) {
+        if (protocolImpl.isApplicable(form)) {
+          this.writePropertyHandler = protocolImpl.build(form);
+        }
+      }
+    }
+
+    if (this.observePropertyHandler) {
+      this.subscription = this.observePropertyHandler.observeProperty((response) => {
+        this.setCachedValue(response);
+        this.device.notifyPropertyChanged(this);
+      });
+    }
+
+    this.poll();
+  }
+
+  cancelSubscriptions() {
+    if (this.subscription) {
+      this.subscription.cancel();
+      this.subscription = null;
+    }
+  }
+
+  poll() {
+    if (this.readPropertyHandler) {
+      this.readPropertyHandler.readProperty().then((response) => {
+        this.setCachedValue(response);
+        this.device.notifyPropertyChanged(this);
+      });
+    }
   }
 
   /**
@@ -55,41 +133,11 @@ class ThingURLProperty extends Property {
    * the value passed in.
    */
   setValue(value) {
-    if (this.device.ws && this.device.ws.readyState === WebSocket.OPEN) {
-      const msg = {
-        messageType: SET_PROPERTY,
-        data: {[this.name]: value},
-      };
-
-      this.device.ws.send(JSON.stringify(msg));
-
-      // If the value is the same, we probably won't get a propertyStatus back
-      // via the WebSocket, so let's go ahead and notify now.
-      if (value === this.value) {
-        this.device.notifyPropertyChanged(this);
-      }
-
-      return Promise.resolve(value);
-    }
-
-    return fetch(this.url, {
-      method: 'PUT',
-      headers: {
-        'Content-type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        value,
-      }),
-    }).then((res) => {
-      return res.json();
-    }).then((response) => {
-      const updatedValue = response[this.name];
-      this.setCachedValue(updatedValue);
+    return this.writePropertyHandler.writeProperty(value).then((response) => {
+      this.setCachedValue(value);
       this.device.notifyPropertyChanged(this);
-      return updatedValue;
+      return value;
     }).catch((e) => {
-      console.log(`Failed to set ${this.name}: ${e}`);
       return this.value;
     });
   }
@@ -118,9 +166,9 @@ class ThingURLDevice extends Device {
     this.notifiedEvents = new Set();
     this.scheduledUpdate = null;
     this.closing = false;
-    this.actionsList=[];
-    this.eventsList={};
-    this.eventObservers={};
+    this.actionsList = [];
+    this.eventsList = {};
+    this.eventSubscriptions = {};
 
     for (const actionName in description.actions) {
       const action = description.actions[actionName];
@@ -152,82 +200,8 @@ class ThingURLDevice extends Device {
 
     for (const propertyName in description.properties) {
       const propertyDescription = description.properties[propertyName];
-
-      let propertyUrl;
-      if (propertyDescription.hasOwnProperty('forms')) {
-        for (const link of propertyDescription.forms) {
-          if (!link.rel || link.rel === 'property') {
-            propertyUrl = link.href;
-            break;
-          }
-        }
-      }
-
-      if (!propertyUrl) {
-        if (!propertyDescription.href) {
-          continue;
-        }
-
-        propertyUrl = this.baseHref + propertyDescription.href;
-      }
-
-      this.propertyPromises.push(
-        fetch(propertyUrl, {
-          headers: {
-            Accept: 'application/json',
-          },
-        }).then((res) => {
-          return res.json();
-        }).then((res) => {
-          propertyDescription.value = res;
-          if (propertyDescription.hasOwnProperty('forms')) {
-            propertyDescription.forms = propertyDescription.forms.map((l) => {
-              if (!l.href.startsWith('http://') &&
-                  !l.href.startsWith('https://')) {
-                l.proxy = true;
-              }
-              return l;
-            });
-          }
-          const property = new ThingURLProperty(
-            this, propertyName, propertyUrl, propertyDescription);
-          this.properties.set(propertyName, property);
-        }).catch((e) => {
-          console.log(`Failed to connect to ${propertyUrl}: ${e}`);
-        })
-      );
-    }
-
-    // If a websocket endpoint exists, connect to it.
-    if (description.hasOwnProperty('forms')) {
-      for (const link of description.forms) {
-        if (link.rel === 'actions') {
-          this.actionsUrl = link.href;
-        } else if (link.rel === 'events') {
-          this.eventsUrl = link.href;
-        } else if (link.rel === 'properties') {
-          // pass
-        } else if (link.rel === 'alternate') {
-          if (link.mediaType === 'text/html') {
-            if (!link.href.startsWith('http://') &&
-                !link.href.startsWith('https://')) {
-              link.proxy = true;
-            }
-            this.links.push(link);
-          } else if (link.href.startsWith('ws://') ||
-                     link.href.startsWith('wss://')) {
-            this.wsUrl = link.href;
-          } else {
-            this.links.push(link);
-          }
-        } else {
-          if (!link.href.startsWith('http://') &&
-              !link.href.startsWith('https://')) {
-            link.proxy = true;
-          }
-          this.links.push(link);
-        }
-      }
+      const property = new ThingProperty(this, propertyName, propertyDescription.forms, propertyDescription);
+      this.properties.set(propertyName, property);
     }
 
     this.startReading();
@@ -240,24 +214,28 @@ class ThingURLDevice extends Device {
       return;
     }
 
-    if (this.wsUrl) {
-      if (!this.ws) {
-        this.createWebSocket();
-      }
-    } else {
 
-
-      for (const key in this.eventsList) {
-        var value =  this.eventsList[key];
-        for (const form of value.forms) {
-          console.log("##### CREAING WS0 " + form.href);
-          if(form.href.startsWith("ws://")) {
-            this.createWebSocket(key, form.href);
+    for (const eventName in this.eventsList) {
+      var value = this.eventsList[eventName];
+      for (const form of value.forms) {
+        const subscribeEventHandlerClasses = [HttpLongPollingSubscribeEventOpHandler];
+        var subscribeEventHandler = null;
+        for (const subscribeEventHandlerClass of subscribeEventHandlerClasses) {
+          if (subscribeEventHandlerClass.isApplicable(form)) {
+            subscribeEventHandler = subscribeEventHandlerClass.build(form);
           }
         }
-
+        if (subscribeEventHandler) {
+          this.eventSubscriptions[eventName] = subscribeEventHandler.subscribeEvent((response) => {
+            var event = {};
+            event.data = response;
+            this.createEvent(eventName, event);
+          })
+          break;
+        }
       }
-      
+
+
       // If there's no websocket endpoint, poll the device for updates.
       // eslint-disable-next-line no-lonely-if
       if (!this.scheduledUpdate) {
@@ -266,48 +244,23 @@ class ThingURLDevice extends Device {
     }
   }
 
-  closeWebSocket() {
+  cancelSubscriptions() {
     this.closing = true;
-    if (this.ws !== null) {
-      if (this.ws.readyState === WebSocket.OPEN) {
-        this.ws.close();
-      }
 
-      // Allow the cleanup code in createWebSocket to handle shutdown
-    } else if (this.scheduledUpdate) {
+    for (const property of this.properties.values()) {
+      property.cancelSubscriptions();
+    }
+
+    Object.keys(this.eventSubscriptions).forEach((key, index) => {
+      if (this.eventSubscriptions[key]) {
+        this.eventSubscriptions[key].cancel();
+        this.eventSubscriptions[key] = null;
+      }
+    });
+
+    if (this.scheduledUpdate) {
       clearTimeout(this.scheduledUpdate);
     }
-  }
-
-  createWebSocket(eventName, url) {
-    console.log("CREAING WS");
-    this.eventObservers[eventName] = new WebSocket(url);
-
-    this.eventObservers[eventName].on('open', () => {
-      console.log("OPEN WS");
-    });
-
-    this.eventObservers[eventName].on('message', (data) => {
-      const msg = JSON.parse(data);
-      console.log("CREATING EVENT");
-      var event = {};
-      event.data = msg;
-      this.createEvent(eventName, event);
-    });
-
-    const cleanupAndReopen = () => {
-      this.eventObservers[eventName].removeAllListeners('close');
-      this.eventObservers[eventName].removeAllListeners('error');
-      this.eventObservers[eventName].close();
-      this.eventObservers[eventName] = null;
-
-      setTimeout(() => {
-        this.createWebSocket(eventName, url);
-      }, 1000);
-    };
-
-    this.eventObservers[eventName].on('close', cleanupAndReopen);
-    this.eventObservers[eventName].on('error', cleanupAndReopen);
   }
 
   async poll() {
@@ -315,76 +268,9 @@ class ThingURLDevice extends Device {
       return;
     }
 
-    // Update properties
-    await Promise.all(Array.from(this.properties.values()).map((prop) => {
-      return fetch(prop.url, {
-        headers: {
-          Accept: 'application/json',
-        },
-      }).then((res) => {
-        return res.json();
-      }).then((res) => {
-        const newValue = res;
-        prop.getValue().then((value) => {
-          if (value !== newValue) {
-            prop.setCachedValue(newValue);
-            this.notifyPropertyChanged(prop);
-          }
-        });
-      });
-    })).then(() => {
-      // Check for new actions
-      if (this.actionsUrl !== null) {
-        return fetch(this.actionsUrl, {
-          headers: {
-            Accept: 'application/json',
-          },
-        }).then((res) => {
-          return res.json();
-        }).then((actions) => {
-          for (let action of actions) {
-            const actionName = Object.keys(action)[0];
-            action = action[actionName];
-            const requestedAction =
-              this.requestedActions.get(action.href);
-
-            if (requestedAction && action.status !== requestedAction.status) {
-              requestedAction.status = action.status;
-              requestedAction.timeRequested = action.timeRequested;
-              requestedAction.timeCompleted = action.timeCompleted;
-              this.actionNotify(requestedAction);
-            }
-          }
-        });
-      }
-
-      return Promise.resolve();
-    }).then(() => {
-      // Check for new events
-      if (this.eventsUrl !== null) {
-        return fetch(this.eventsUrl, {
-          headers: {
-            Accept: 'application/json',
-          },
-        }).then((res) => {
-          return res.json();
-        }).then((events) => {
-          for (let event of events) {
-            const eventName = Object.keys(event)[0];
-            event = event[eventName];
-            this.createEvent(eventName, event);
-          }
-        });
-      }
-
-      return Promise.resolve();
-    }).then(() => {
-      this.connectedNotify(true);
-      return Promise.resolve();
-    }).catch((e) => {
-      console.log(`Failed to poll device: ${e}`);
-      this.connectedNotify(false);
-    });
+    for (const prop of this.properties.values()) {
+      prop.poll();
+    }
 
     if (this.scheduledUpdate) {
       clearTimeout(this.scheduledUpdate);
@@ -400,11 +286,11 @@ class ThingURLDevice extends Device {
     const eventId = `${eventName}-${event.timestamp}`;
 
     event.timestamp = new Date().toISOString();
-    
+
     this.notifiedEvents.add(eventId);
     const e = new Event(this,
-                        eventName,
-                        event.data || null);
+      eventName,
+      event.data || null);
     e.timestamp = event.timestamp;
 
     this.eventNotify(e);
@@ -419,7 +305,7 @@ class ThingURLDevice extends Device {
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
-      body: JSON.stringify({[action.name]: {input: action.input}}),
+      body: JSON.stringify({ [action.name]: { input: action.input } }),
     }).then((res) => {
       return res.json();
     }).then((res) => {
@@ -486,7 +372,7 @@ class ThingURLAdapter extends Adapter {
 
     let res;
     try {
-      res = await fetch(url, {headers: {Accept: 'application/json'}});
+      res = await fetch(url, { headers: { Accept: 'application/json' } });
     } catch (e) {
       // Retry the connection at a 2 second interval up to 5 times.
       if (retryCounter >= 5) {
@@ -552,7 +438,7 @@ class ThingURLAdapter extends Adapter {
     for (const id in this.devices) {
       const device = this.devices[id];
       if (device.mdnsUrl === url) {
-        device.closeWebSocket();
+        device.cancelSubscriptions();
         this.removeThing(device, true);
       }
     }
@@ -617,7 +503,7 @@ class ThingURLAdapter extends Adapter {
 
       if (this.devices.hasOwnProperty(device.id)) {
         this.handleDeviceRemoved(device);
-        device.closeWebSocket();
+        device.cancelSubscriptions();
         return device;
       } else {
         throw new Error(`Device: ${device.id} not found.`);
@@ -675,7 +561,7 @@ class ThingURLAdapter extends Adapter {
     }
 
     for (const id in this.devices) {
-      this.devices[id].closeWebSocket();
+      this.devices[id].cancelSubscriptions();
     }
 
     return super.unload();
@@ -711,13 +597,13 @@ function startDNSDiscovery(adapter) {
   httpBrowser = new dnssd.Browser(new dnssd.ServiceType('_http._tcp'));
   httpBrowser.on('serviceUp', (service) => {
     if (typeof service.txt === 'object' &&
-        service.txt.hasOwnProperty('webthing')) {
+      service.txt.hasOwnProperty('webthing')) {
       adapter.loadThing(service.txt.url);
     }
   });
   httpBrowser.on('serviceDown', (service) => {
     if (typeof service.txt === 'object' &&
-        service.txt.hasOwnProperty('webthing')) {
+      service.txt.hasOwnProperty('webthing')) {
       adapter.unloadThing(service.txt.url);
     }
   });
