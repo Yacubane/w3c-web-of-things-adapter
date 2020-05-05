@@ -8,4 +8,4 @@
 
 'use strict';
 
-module.exports = require('./thing-url-adapter');
+module.exports = require('./w3c-wot-adapter');

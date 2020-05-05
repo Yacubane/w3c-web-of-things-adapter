@@ -29,7 +29,7 @@
     "SHA256SUMS",
     "index.js",
     "manifest.json",
-    "thing-url-adapter.js",
+    "w3c-wot-adapter.js",
     "base-op-handlers.js",
     "skeleton-op-handlers.js"
   ],
