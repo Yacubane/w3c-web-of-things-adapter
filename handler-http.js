@@ -152,7 +152,6 @@ class HttpLongPollingSubscription extends Subscription {
             return res.json();
         }).then((response) => {
             if (this.active) {
-                console.log("RES " + response);
                 this.callback(response);
                 this._start();
             }

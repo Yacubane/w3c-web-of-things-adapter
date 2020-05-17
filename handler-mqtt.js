@@ -1,4 +1,6 @@
-const { Subscription, OpHandler,
+const {
+    ThingDescription, LoadDeviceHandler,
+    Connection, Subscription, OpHandler,
     ReadPropertyOpHandler,
     WritePropertyOpHandler,
     ObservePropertyOpHandler,
@@ -8,6 +10,40 @@ const { Subscription, OpHandler,
     UnsubscribeEventOpHandler
 } = require('./handlers-skeleton.js');
 
+var mqtt = require('mqtt');
+
+class MqttLoadDeviceHandler extends LoadDeviceHandler {
+    static isApplicable(uri) {
+        if (uri.startsWith("mqtt")) {
+            return true;
+        }
+        return false;
+    }
+    static loadDevice(adapter, uri) {
+        return new Promise((resolve, reject) => {
+            const regexp = /([^/]*\/[^/]*\/[^/]*)(.+)/.exec(uri);
+            const hostname = regexp[1];
+            const devicePath = regexp[2];
+
+            var client = mqtt.connect(hostname);
+
+            client.on('connect', function () {
+                client.subscribe(devicePath, function () {
+                    client.on('message', function (topic, message, packet) {
+                        let description = JSON.parse(message);
+                        resolve(new ThingDescription(uri, message, description, { hostname: client }));
+                    });
+                });
+
+            });
+
+            let wait = setTimeout(() => {
+                clearTimout(wait);
+                reject();
+            }, 5000)
+        })
+    }
+}
 
 class MqttWritePropertyOpHandler extends WritePropertyOpHandler {
     constructor(href) {
@@ -16,7 +52,7 @@ class MqttWritePropertyOpHandler extends WritePropertyOpHandler {
     }
 
     writeProperty(data) {
-     
+
     }
 
     static isApplicable(form) {
@@ -39,7 +75,7 @@ class MqttInvokeActionOpHandler extends InvokeActionOpHandler {
     }
 
     invokeAction(data, uriVariables = {}) {
-     
+
     }
 
     static isApplicable(form) {
@@ -56,14 +92,26 @@ class MqttInvokeActionOpHandler extends InvokeActionOpHandler {
 
 
 class MqttSubscription extends Subscription {
-    constructor(href, callback) {
+    constructor(client, path, callback) {
         super();
+        this.active = true;
+        this.client = client;
+        this.path = path;
         this._start();
     }
     _start() {
-      
+        client.subscribe(path, function () {
+            client.on('message', function (topic, message, packet) {
+                if (this.active) {
+                    let obj = JSON.parse(message);
+                    callback(obj);
+                }
+            });
+        });
     }
     cancel() {
+        this.active = false;
+        client.unsubscribe(path);
     }
 }
 
@@ -112,6 +160,7 @@ class MqttSubscribeEventOpHandler extends SubscribeEventOpHandler {
 }
 
 module.exports = {
+    MqttLoadDeviceHandler,
     MqttWritePropertyOpHandler,
     MqttInvokeActionOpHandler,
     MqttObservePropertyOpHandler,

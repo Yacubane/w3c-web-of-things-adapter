@@ -345,6 +345,7 @@ class ThingURLAdapter extends Adapter {
       }
     } catch (e) {
       // Retry the connection at a 2 second interval up to 5 times.
+      console.log(e);
       if (retryCounter >= 5) {
         console.log(`Failed to connect to ${url}: ${e}`);
       } else {
