@@ -1,4 +1,6 @@
-const { Subscription, OpHandler,
+const { 
+    ThingDescription, LoadDeviceHandler,
+    Connection, Subscription, OpHandler,
     ReadPropertyOpHandler,
     WritePropertyOpHandler,
     ObservePropertyOpHandler,
@@ -6,10 +8,30 @@ const { Subscription, OpHandler,
     InvokeActionOpHandler,
     SubscribeEventOpHandler,
     UnsubscribeEventOpHandler
-} = require('./skeleton-op-handlers.js');
+} = require('./handlers-skeleton.js');
+
+const W3CTransformer = require('./transformer.js');
 
 const fetch = require('node-fetch');
-var URITemplate = require('urijs/src/URITemplate');
+const URITemplate = require('urijs/src/URITemplate');
+
+class HttpLoadDeviceHandler extends LoadDeviceHandler {
+    static isApplicable(uri) {
+        if (uri.startsWith("http")) {
+            return true;
+        }
+        return false;
+    }
+    static loadDevice(adapter, uri) {
+        return fetch(uri, { headers: { Accept: 'application/json' } })
+        .then(res => res.text())
+        .then(res => {
+            let data = JSON.parse(res);
+            data = W3CTransformer.transformData(data);
+            return new ThingDescription(uri, res, data);          
+        });
+    }
+}
 
 class HttpWritePropertyOpHandler extends WritePropertyOpHandler {
     constructor(href) {
@@ -40,7 +62,7 @@ class HttpWritePropertyOpHandler extends WritePropertyOpHandler {
         return false;
     }
 
-    static build(form) {
+    static build(thing, form) {
         return new HttpWritePropertyOpHandler(form.href);
     }
 }
@@ -72,7 +94,7 @@ class HttpReadPropertyOpHandler extends ReadPropertyOpHandler {
         return false;
     }
 
-    static build(form) {
+    static build(thing, form) {
         return new HttpReadPropertyOpHandler(form.href);
     }
 }
@@ -105,7 +127,7 @@ class HttpInvokeActionOpHandler extends InvokeActionOpHandler {
         return false;
     }
 
-    static build(form) {
+    static build(thing, form) {
         return new HttpInvokeActionOpHandler(form.href);
     }
 }
@@ -162,7 +184,7 @@ class HttpLongPollingObservePropertyOpHandler extends ObservePropertyOpHandler {
         return false;
     }
 
-    static build(form) {
+    static build(thing, form) {
         return new HttpLongPollingObservePropertyOpHandler(form.href);
     }
 }
@@ -184,12 +206,13 @@ class HttpLongPollingSubscribeEventOpHandler extends SubscribeEventOpHandler {
         return false;
     }
 
-    static build(form) {
+    static build(thing, form) {
         return new HttpLongPollingSubscribeEventOpHandler(form.href);
     }
 }
 
 module.exports = {
+    HttpLoadDeviceHandler,
     HttpReadPropertyOpHandler, HttpWritePropertyOpHandler,
     HttpInvokeActionOpHandler,
     HttpLongPollingObservePropertyOpHandler,

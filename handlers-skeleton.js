@@ -1,3 +1,27 @@
+class ThingDescription {
+    constructor(id, text, description, connections) {
+        this.id = id;
+        this.text = text;
+        this.description = description;
+        this.connections = connections;
+    }
+}
+
+class LoadDeviceHandler {
+    static isApplicable(uri) {
+        throw 'Unimplemented';
+    }
+    static loadDevice(adapter, uri) {
+        throw 'Unimplemented';
+    }
+}
+
+class Connection {
+    cancel() {
+        throw 'Unimplemented';
+    }
+}
+
 class Subscription {
     cancel() {
         throw 'Unimplemented';
@@ -8,7 +32,7 @@ class OpHandler {
     static isApplicable(form) {
         throw 'Unimplemented';
     }
-    static build(form) {
+    static build(thing, form) {
         throw 'Unimplemented';
     }
 }
@@ -56,7 +80,8 @@ class UnsubscribeEventOpHandler extends OpHandler {
 }
 
 module.exports = {
-    Subscription, OpHandler,
+    ThingDescription, LoadDeviceHandler,
+    Connection, Subscription, OpHandler,
     ReadPropertyOpHandler, WritePropertyOpHandler,
     ObservePropertyOpHandler, UnobservePropertyOpHandler,
     InvokeActionOpHandler,

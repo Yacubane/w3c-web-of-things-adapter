@@ -30,8 +30,10 @@
     "index.js",
     "manifest.json",
     "w3c-wot-adapter.js",
-    "base-op-handlers.js",
-    "skeleton-op-handlers.js"
+    "handlers-skeleton.js",
+    "handlers-default.js",
+    "handlers-http.js",
+    "handlers-mqtt.js"
   ],
   "moziot": {
     "api": {

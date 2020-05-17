@@ -7,19 +7,20 @@
  */
 
 'use strict';
-const { HttpReadPropertyOpHandler,
-  HttpWritePropertyOpHandler,
-  HttpInvokeActionOpHandler,
-  HttpLongPollingObservePropertyOpHandler,
-  HttpLongPollingSubscribeEventOpHandler
-} = require('./base-op-handlers.js');
+const {
+  loadDeviceHandlers,
+  observePropertyHandlers,
+  readPropertyHandlers,
+  writePropertyHandlers,
+  invokeActionHandlers,
+  subscribeEventHandlers
+} = require('./handlers-default.js');
 
 const crypto = require('crypto');
 const dnssd = require('dnssd');
 const fetch = require('node-fetch');
 const manifest = require('./manifest.json');
 const { URL } = require('url');
-const WebSocket = require('ws');
 const W3CTransformer = require('./transformer.js');
 
 const {
@@ -34,16 +35,7 @@ let webthingBrowser;
 let subtypeBrowser;
 let httpBrowser;
 
-const ACTION_STATUS = 'actionStatus';
-const ADD_EVENT_SUBSCRIPTION = 'addEventSubscription';
-const EVENT = 'event';
-const PROPERTY_STATUS = 'propertyStatus';
-const SET_PROPERTY = 'setProperty';
-
-const PING_INTERVAL = 30 * 1000;
 const POLL_INTERVAL = 5 * 1000;
-const WS_INITIAL_BACKOFF = 1000;
-const WS_MAX_BACKOFF = 30 * 1000;
 
 class ThingProperty extends Property {
   constructor(device, name, forms, propertyDescription) {
@@ -70,32 +62,29 @@ class ThingProperty extends Property {
       }
     }
 
-    var protocolImpls = [HttpLongPollingObservePropertyOpHandler];
     const observeModes = this.ops["observeproperty"];
     for (const form of observeModes) {
-      for (const protocolImpl of protocolImpls) {
+      for (const protocolImpl of observePropertyHandlers) {
         if (protocolImpl.isApplicable(form)) {
-          this.observePropertyHandler = protocolImpl.build(form);
+          this.observePropertyHandler = protocolImpl.build(device, form);
         }
       }
     }
 
     const pollModes = this.ops["readproperty"];
-    protocolImpls = [HttpReadPropertyOpHandler];
     for (const form of pollModes) {
-      for (const protocolImpl of protocolImpls) {
+      for (const protocolImpl of readPropertyHandlers) {
         if (protocolImpl.isApplicable(form)) {
-          this.readPropertyHandler = protocolImpl.build(form);
+          this.readPropertyHandler = protocolImpl.build(device, form);
         }
       }
     }
 
     const writeModes = this.ops["writeproperty"];
-    protocolImpls = [HttpWritePropertyOpHandler];
     for (const form of writeModes) {
-      for (const protocolImpl of protocolImpls) {
+      for (const protocolImpl of writePropertyHandlers) {
         if (protocolImpl.isApplicable(form)) {
-          this.writePropertyHandler = protocolImpl.build(form);
+          this.writePropertyHandler = protocolImpl.build(device, form);
         }
       }
     }
@@ -145,7 +134,7 @@ class ThingProperty extends Property {
 }
 
 class ThingURLDevice extends Device {
-  constructor(adapter, id, url, description, mdnsUrl) {
+  constructor(adapter, id, url, description, connections) {
     super(adapter, id);
     this.title = this.name = description.title || description.name;
     this.type = description.type;
@@ -153,20 +142,22 @@ class ThingURLDevice extends Device {
       description['@context'] || 'https://iot.mozilla.org/schemas';
     this['@type'] = description['@type'] || [];
     this.url = url;
-    this.mdnsUrl = mdnsUrl;
     this.actionsUrl = null;
     this.eventsUrl = null;
     this.wsUrl = null;
     this.description = description.description;
     this.propertyPromises = [];
     this.ws = null;
-    this.wsBackoff = WS_INITIAL_BACKOFF;
     this.pingInterval = null;
     this.requestedActions = new Map();
     this.baseHref = new URL(url).origin;
     this.notifiedEvents = new Set();
     this.scheduledUpdate = null;
     this.closing = false;
+    this.connections = connections;
+    if (!connections) {
+      this.connections = {};
+    }
     this.actionsList = {};
     this.actionInvokers = {};
     this.eventsList = {};
@@ -202,11 +193,10 @@ class ThingURLDevice extends Device {
     for (const actionName in this.actionsList) {
       var value = this.actionsList[actionName];
       for (const form of value.forms) {
-        const invokeActionHandlerClasses = [HttpInvokeActionOpHandler];
         var invokeActionHandler = null;
-        for (const invokeActionHandlerClass of invokeActionHandlerClasses) {
+        for (const invokeActionHandlerClass of invokeActionHandlers) {
           if (invokeActionHandlerClass.isApplicable(form)) {
-            invokeActionHandler = invokeActionHandlerClass.build(form);
+            invokeActionHandler = invokeActionHandlerClass.build(this, form);
           }
         }
       }
@@ -216,11 +206,10 @@ class ThingURLDevice extends Device {
     for (const eventName in this.eventsList) {
       var value = this.eventsList[eventName];
       for (const form of value.forms) {
-        const subscribeEventHandlerClasses = [HttpLongPollingSubscribeEventOpHandler];
         var subscribeEventHandler = null;
-        for (const subscribeEventHandlerClass of subscribeEventHandlerClasses) {
+        for (const subscribeEventHandlerClass of subscribeEventHandlers) {
           if (subscribeEventHandlerClass.isApplicable(form)) {
-            subscribeEventHandler = subscribeEventHandlerClass.build(form);
+            subscribeEventHandler = subscribeEventHandlerClass.build(this, form);
           }
         }
         if (subscribeEventHandler) {
@@ -243,8 +232,6 @@ class ThingURLDevice extends Device {
   }
 
   cancelSubscriptions() {
-    this.closing = true;
-
     for (const property of this.properties.values()) {
       property.cancelSubscriptions();
     }
@@ -255,6 +242,18 @@ class ThingURLDevice extends Device {
         this.eventSubscriptions[key] = null;
       }
     });
+  }
+
+  cancelConnections() {
+    this.closing = true;
+
+    Object.keys(this.connections).forEach((key, index) => {
+      if (this.connections[key]) {
+        this.connections[key].cancel();
+        this.connections[key] = null;
+      }
+    });
+
 
     if (this.scheduledUpdate) {
       clearTimeout(this.scheduledUpdate);
@@ -340,9 +339,13 @@ class ThingURLAdapter extends Adapter {
       return;
     }
 
-    let res;
+    let thingDescription;
     try {
-      res = await fetch(url, { headers: { Accept: 'application/json' } });
+      for (const loadDeviceHandler of loadDeviceHandlers) {
+        if (loadDeviceHandler.isApplicable(url)) {
+          thingDescription = await loadDeviceHandler.loadDevice(this, url);
+        }
+      }
     } catch (e) {
       // Retry the connection at a 2 second interval up to 5 times.
       if (retryCounter >= 5) {
@@ -353,10 +356,12 @@ class ThingURLAdapter extends Adapter {
 
       return;
     }
-    const text = await res.text();
+    if (!thingDescription) {
+      return;
+    }
 
     const hash = crypto.createHash('md5');
-    hash.update(text);
+    hash.update(thingDescription.text);
     const dig = hash.digest('hex');
     let known = false;
     if (this.knownUrls[url].digest === dig) {
@@ -368,38 +373,14 @@ class ThingURLAdapter extends Adapter {
       timestamp: Date.now(),
     };
 
-    let data;
-    try {
-      data = JSON.parse(text);
-      data = W3CTransformer.transformData(data);
-    } catch (e) {
-      console.log(`Failed to parse description at ${url}: ${e}`);
-      return;
-    }
-
-    let things;
-    if (Array.isArray(data)) {
-      things = data;
-    } else {
-      things = [data];
-    }
-
-    for (const thingDescription of things) {
-      let thingUrl = url;
-      if (thingDescription.hasOwnProperty('href')) {
-        const baseHref = new URL(url).origin;
-        thingUrl = thingDescription.href;
+    if (thingDescription.id in this.devices) {
+      if (known) {
+        return;
       }
-
-      const id = thingUrl.replace(/[:/]/g, '-');
-      if (id in this.devices) {
-        if (known) {
-          continue;
-        }
-        await this.removeThing(this.devices[id], true);
-      }
-      await this.addDevice(id, thingUrl, thingDescription, url);
+      await this.removeThing(this.devices[thingDescription.id], true);
     }
+    await this.addDevice(thingDescription.id, url,
+      thingDescription.description, thingDescription.connections);
   }
 
   unloadThing(url) {
@@ -407,10 +388,9 @@ class ThingURLAdapter extends Adapter {
 
     for (const id in this.devices) {
       const device = this.devices[id];
-      if (device.mdnsUrl === url) {
-        device.cancelSubscriptions();
-        this.removeThing(device, true);
-      }
+      device.cancelSubscriptions();
+      device.cancelConnections();
+      this.removeThing(device, true);
     }
 
     if (this.knownUrls[url]) {
@@ -424,13 +404,13 @@ class ThingURLAdapter extends Adapter {
    * @param {String} deviceId ID of the device to add.
    * @return {Promise} which resolves to the device added.
    */
-  addDevice(deviceId, deviceURL, description, mdnsUrl) {
+  addDevice(deviceId, deviceURL, description, connections) {
     return new Promise((resolve, reject) => {
       if (deviceId in this.devices) {
         reject(`Device: ${deviceId} already exists.`);
       } else {
         const device =
-          new ThingURLDevice(this, deviceId, deviceURL, description, mdnsUrl);
+          new ThingURLDevice(this, deviceId, deviceURL, description, connections);
         Promise.all(device.propertyPromises).then(() => {
           this.handleDeviceAdded(device);
 
@@ -532,52 +512,11 @@ class ThingURLAdapter extends Adapter {
 
     for (const id in this.devices) {
       this.devices[id].cancelSubscriptions();
+      this.devices[id].cancelConnections();
     }
 
     return super.unload();
   }
-}
-
-function startDNSDiscovery(adapter) {
-  console.log('Starting mDNS discovery');
-
-  webthingBrowser =
-    new dnssd.Browser(new dnssd.ServiceType('_webthing._tcp'));
-  webthingBrowser.on('serviceUp', (service) => {
-    const host = service.host.replace(/\.$/, '');
-    adapter.loadThing(`http://${host}:${service.port}${service.txt.path}`);
-  });
-  webthingBrowser.on('serviceDown', (service) => {
-    const host = service.host.replace(/\.$/, '');
-    adapter.unloadThing(`http://${host}:${service.port}${service.txt.path}`);
-  });
-  webthingBrowser.start();
-
-  // Support legacy devices
-  subtypeBrowser =
-    new dnssd.Browser(new dnssd.ServiceType('_http._tcp,_webthing'));
-  subtypeBrowser.on('serviceUp', (service) => {
-    adapter.loadThing(service.txt.url);
-  });
-  subtypeBrowser.on('serviceDown', (service) => {
-    adapter.unloadThing(service.txt.url);
-  });
-  subtypeBrowser.start();
-
-  httpBrowser = new dnssd.Browser(new dnssd.ServiceType('_http._tcp'));
-  httpBrowser.on('serviceUp', (service) => {
-    if (typeof service.txt === 'object' &&
-      service.txt.hasOwnProperty('webthing')) {
-      adapter.loadThing(service.txt.url);
-    }
-  });
-  httpBrowser.on('serviceDown', (service) => {
-    if (typeof service.txt === 'object' &&
-      service.txt.hasOwnProperty('webthing')) {
-      adapter.unloadThing(service.txt.url);
-    }
-  });
-  httpBrowser.start();
 }
 
 function loadThingURLAdapter(addonManager) {
@@ -594,8 +533,6 @@ function loadThingURLAdapter(addonManager) {
     for (const url of config.urls) {
       adapter.loadThing(url);
     }
-
-    startDNSDiscovery(adapter);
   }).catch(console.error);
 }
 
