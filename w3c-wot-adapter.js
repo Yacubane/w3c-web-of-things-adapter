@@ -1,5 +1,5 @@
 /**
- * example-plugin-adapter.js - ThingURL adapter implemented as a plugin.
+ * WoT adapter for Mozilla Gateway
  *
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -17,11 +17,8 @@ const {
 } = require('./handlers-default.js');
 
 const crypto = require('crypto');
-const dnssd = require('dnssd');
-const fetch = require('node-fetch');
 const manifest = require('./manifest.json');
 const { URL } = require('url');
-const W3CTransformer = require('./transformer.js');
 
 const {
   Adapter,
