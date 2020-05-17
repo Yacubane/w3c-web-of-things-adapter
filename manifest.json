@@ -1,5 +1,5 @@
 {
-  "author": "Mozilla IoT",
+  "author": "AGH UST",
   "description": "W3C Web of Things adapter",
   "gateway_specific_settings": {
     "webthings": {
@@ -10,7 +10,7 @@
       "enabled": true
     }
   },
-  "homepage_url": "https://github.com/mozilla-iot/thing-url-adapter",
+  "homepage_url": "https://github.com/jakubdybczak/w3c-web-of-things-adapter",
   "id": "w3c-web-of-things-adapter",
   "license": "MPL-2.0",
   "manifest_version": 1,
@@ -40,6 +40,6 @@
       }
     }
   },
-  "short_name": "Web Thing",
-  "version": "0.4.6"
+  "short_name": "W3C WoT",
+  "version": "0.0.1"
 }
