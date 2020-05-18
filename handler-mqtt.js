@@ -12,6 +12,36 @@ const {
 
 var mqtt = require('mqtt');
 
+function createOrGetClient(thing, uri) {
+    return new Promise((resolve, reject) => {
+        if (thing.connections[uri]) {
+            resolve(thing.connections[uri]);
+        }
+
+        var client = mqtt.connect(uri);
+
+        client.on('connect', function () {
+            thing.connections[uri] = client;
+            resolve(client);
+        });
+
+        let wait = setTimeout(() => {
+            clearTimeout(wait);
+            reject();
+        }, 5000)
+    });
+}
+
+class MqttConnection extends Connection {
+    constructor(client) {
+        super();
+        this.client = client;
+    }
+    cancel() {
+        throw 'Unimplemented';
+    }
+}
+
 class MqttLoadDeviceHandler extends LoadDeviceHandler {
     static isApplicable(uri) {
         if (uri.startsWith("mqtt")) {
@@ -21,38 +51,44 @@ class MqttLoadDeviceHandler extends LoadDeviceHandler {
     }
     static loadDevice(adapter, uri) {
         return new Promise((resolve, reject) => {
+            let wait = setTimeout(() => {
+                clearTimeout(wait);
+                reject();
+            }, 5000)
+
             const regexp = /([^/]*\/[^/]*\/[^/]*)(.+)/.exec(uri);
             const hostname = regexp[1];
             const devicePath = regexp[2];
 
             var client = mqtt.connect(hostname);
 
-            client.on('connect', function () {
-                client.subscribe(devicePath, function () {
-                    client.on('message', function (topic, message, packet) {
+            client.on('connect', () => {
+                client.subscribe(devicePath, () => {
+                    client.on('message', (topic, message, packet) => {
                         let description = JSON.parse(message);
-                        resolve(new ThingDescription(uri, message, description, { hostname: client }));
+                        let connections = {};
+                        connections[hostname] = new MqttConnection(client);
+                        clearTimeout(wait);
+                        resolve(new ThingDescription(uri, message, description, connections));
                     });
                 });
 
             });
-
-            let wait = setTimeout(() => {
-                clearTimout(wait);
-                reject();
-            }, 5000)
         })
     }
 }
 
 class MqttWritePropertyOpHandler extends WritePropertyOpHandler {
-    constructor(href) {
+    constructor(thing, hostname, path) {
         super();
-        this.href = href;
+        this.thing = thing;
+        this.hostname = hostname;
+        this.path = path;
     }
 
     writeProperty(data) {
-
+        return createOrGetClient(this.thing, this.hostname)
+            .then(client => client.publish(this.path, JSON.stringify(data)));
     }
 
     static isApplicable(form) {
@@ -63,19 +99,25 @@ class MqttWritePropertyOpHandler extends WritePropertyOpHandler {
     }
 
     static build(thing, form) {
-        return new MqttWritePropertyOpHandler(form.href);
+        const regexp = /([^/]*\/[^/]*\/[^/]*)(.+)/.exec(form.href);
+        const hostname = regexp[1];
+        const path = regexp[2];
+        return new MqttWritePropertyOpHandler(thing, hostname, path);
     }
 }
 
 
 class MqttInvokeActionOpHandler extends InvokeActionOpHandler {
-    constructor(href) {
+    constructor(thing, hostname, path) {
         super();
-        this.href = href;
+        this.thing = thing;
+        this.hostname = hostname;
+        this.path = path;
     }
 
     invokeAction(data, uriVariables = {}) {
-
+        return createOrGetClient(this.thing, this.hostname)
+            .then(client => client.publish(this.path, JSON.stringify(data)));
     }
 
     static isApplicable(form) {
@@ -86,43 +128,50 @@ class MqttInvokeActionOpHandler extends InvokeActionOpHandler {
     }
 
     static build(thing, form) {
-        return new MqttInvokeActionOpHandler(form.href);
+        const regexp = /([^/]*\/[^/]*\/[^/]*)(.+)/.exec(form.href);
+        const hostname = regexp[1];
+        const path = regexp[2];
+        return new MqttInvokeActionOpHandler(thing, hostname, path);
     }
 }
 
 
 class MqttSubscription extends Subscription {
-    constructor(client, path, callback) {
+    constructor(connection, path, callback) {
         super();
         this.active = true;
-        this.client = client;
+        this.connection = connection;
         this.path = path;
+        this.callback = callback;
         this._start();
     }
     _start() {
-        client.subscribe(path, function () {
-            client.on('message', function (topic, message, packet) {
+        this.connection.client.subscribe(this.path, () => {
+            this.connection.client.on('message', (topic, message, packet) => {
                 if (this.active) {
                     let obj = JSON.parse(message);
-                    callback(obj);
+                    this.callback(obj);
                 }
             });
         });
     }
     cancel() {
         this.active = false;
-        client.unsubscribe(path);
+        this.connection.client.unsubscribe(path);
     }
 }
 
 class MqttObservePropertyOpHandler extends ObservePropertyOpHandler {
-    constructor(href) {
+    constructor(thing, hostname, path) {
         super();
-        this.href = href;
+        this.thing = thing;
+        this.hostname = hostname;
+        this.path = path;
     }
 
     observeProperty(callback) {
-        return new MqttSubscription(this.href, callback);
+        return createOrGetClient(this.thing, this.hostname)
+            .then(client => new MqttSubscription(client, this.path, callback));
     }
 
     static isApplicable(form) {
@@ -133,18 +182,24 @@ class MqttObservePropertyOpHandler extends ObservePropertyOpHandler {
     }
 
     static build(thing, form) {
-        return new MqttObservePropertyOpHandler(form.href);
+        const regexp = /([^/]*\/[^/]*\/[^/]*)(.+)/.exec(form.href);
+        const hostname = regexp[1];
+        const path = regexp[2];
+        return new MqttObservePropertyOpHandler(thing, hostname, path);
     }
 }
 
 class MqttSubscribeEventOpHandler extends SubscribeEventOpHandler {
-    constructor(href) {
+    constructor(thing, hostname, path) {
         super();
-        this.href = href;
+        this.thing = thing;
+        this.hostname = hostname;
+        this.path = path;
     }
 
     subscribeEvent(callback) {
-        return new MqttSubscribeEventOpHandler(this.href, callback);
+        return createOrGetClient(this.thing, this.hostname)
+            .then(client => new MqttSubscription(client, this.path, callback));
     }
 
     static isApplicable(form) {
@@ -155,7 +210,10 @@ class MqttSubscribeEventOpHandler extends SubscribeEventOpHandler {
     }
 
     static build(thing, form) {
-        return new MqttSubscribeEventOpHandler(form.href);
+        const regexp = /([^/]*\/[^/]*\/[^/]*)(.+)/.exec(form.href);
+        const hostname = regexp[1];
+        const path = regexp[2];
+        return new MqttSubscribeEventOpHandler(thing, hostname, path);
     }
 }
 

@@ -87,10 +87,10 @@ class ThingProperty extends Property {
     }
 
     if (this.observePropertyHandler) {
-      this.subscription = this.observePropertyHandler.observeProperty((response) => {
+      this.observePropertyHandler.observeProperty((response) => {
         this.setCachedValue(response);
         this.device.notifyPropertyChanged(this);
-      });
+      }).then(subscription => this.subscription = subscription);
     }
 
     this.poll();
@@ -181,7 +181,7 @@ class ThingURLDevice extends Device {
     this.startReading();
   }
 
-  startReading(now = false) {
+  async startReading(now = false) {
     // If this is a recent gateway version, we hold off on polling/opening the
     // WebSocket until the user has actually saved the device.
     if (Adapter.prototype.hasOwnProperty('handleDeviceSaved') && !now) {
@@ -210,11 +210,11 @@ class ThingURLDevice extends Device {
           }
         }
         if (subscribeEventHandler) {
-          this.eventSubscriptions[eventName] = subscribeEventHandler.subscribeEvent((response) => {
+          subscribeEventHandler.subscribeEvent((response) => {
             var event = {};
             event.data = response;
             this.createEvent(eventName, event);
-          })
+          }).then(subscription => this.eventSubscriptions[eventName] = subscription);
           break;
         }
       }

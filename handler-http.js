@@ -1,4 +1,4 @@
-const { 
+const {
     ThingDescription, LoadDeviceHandler,
     Connection, Subscription, OpHandler,
     ReadPropertyOpHandler,
@@ -24,12 +24,12 @@ class HttpLoadDeviceHandler extends LoadDeviceHandler {
     }
     static loadDevice(adapter, uri) {
         return fetch(uri, { headers: { Accept: 'application/json' } })
-        .then(res => res.text())
-        .then(res => {
-            let data = JSON.parse(res);
-            data = W3CTransformer.transformData(data);
-            return new ThingDescription(uri, res, data);          
-        });
+            .then(res => res.text())
+            .then(res => {
+                let data = JSON.parse(res);
+                data = W3CTransformer.transformData(data);
+                return new ThingDescription(uri, res, data);
+            });
     }
 }
 
@@ -173,7 +173,9 @@ class HttpLongPollingObservePropertyOpHandler extends ObservePropertyOpHandler {
     }
 
     observeProperty(callback) {
-        return new HttpLongPollingSubscription(this.href, callback);
+        return new Promise((resolve, reject) => {
+            resolve(new HttpLongPollingSubscription(this.href, callback));
+        })
     }
 
     static isApplicable(form) {
@@ -195,7 +197,9 @@ class HttpLongPollingSubscribeEventOpHandler extends SubscribeEventOpHandler {
     }
 
     subscribeEvent(callback) {
-        return new HttpLongPollingSubscription(this.href, callback);
+        return new Promise((resolve, reject) => {
+            return new HttpLongPollingSubscription(this.href, callback);
+        })
     }
 
     static isApplicable(form) {
