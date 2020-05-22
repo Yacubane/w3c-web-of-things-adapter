@@ -12,6 +12,7 @@ const {
 const W3CTransformer = require('./transformer.js');
 const URITemplate = require('urijs/src/URITemplate');
 const fetch = require('node-fetch');
+const POOLING_INTERVAL = 5000;
 
 class HttpLoadDeviceHandler extends LoadDeviceHandler {
     static isApplicable(uri) {
@@ -113,7 +114,7 @@ class HttpLongPollingSubscription extends Subscription {
             if (this.active) this.callback(response);
         }).catch(console.error)
         .finally(() => {
-            if (this.active) this._start();
+            if (this.active) setTimeout(this._start, POOLING_INTERVAL);
         });
     }
 
@@ -168,13 +169,13 @@ class HttpPropertyAction {
         'Accept': 'application/json',
     }
 
-    static propertyHandler(href, metchod, data = null) {
+    static propertyHandler(href, method, data = null) {
         let options = {
-            method: metchod,
+            method: method,
             headers: HttpPropertyAction.defaultHeaders,
         };
 
-        if (!!data) headers['body'] = JSON.stringify(data);
+        if (!!data) options['body'] = JSON.stringify(data);
 
         return fetch(href, options).then((res) => {
             return res.json();
