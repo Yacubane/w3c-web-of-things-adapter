@@ -1,13 +1,12 @@
 const {
-    ThingDescription, LoadDeviceHandler,
-    Connection, Subscription, OpHandler,
-    ReadPropertyOpHandler,
+    ThingDescription, 
+    LoadDeviceHandler,
+    Connection, 
+    Subscription,
     WritePropertyOpHandler,
     ObservePropertyOpHandler,
-    UnobservePropertyOpHandler,
     InvokeActionOpHandler,
-    SubscribeEventOpHandler,
-    UnsubscribeEventOpHandler
+    SubscribeEventOpHandler
 } = require('./handlers-skeleton.js');
 
 var mqtt = require('mqtt');
@@ -44,11 +43,9 @@ class MqttConnection extends Connection {
 
 class MqttLoadDeviceHandler extends LoadDeviceHandler {
     static isApplicable(uri) {
-        if (uri.startsWith("mqtt")) {
-            return true;
-        }
-        return false;
+        return uri.startsWith("mqtt");
     }
+    
     static loadDevice(adapter, uri) {
         return new Promise((resolve, reject) => {
             let wait = setTimeout(() => {
@@ -92,10 +89,7 @@ class MqttWritePropertyOpHandler extends WritePropertyOpHandler {
     }
 
     static isApplicable(form) {
-        if (form.href.startsWith("mqtt")) {
-            return true;
-        }
-        return false;
+        return form.href.startsWith("mqtt");
     }
 
     static build(thing, form) {
@@ -121,10 +115,7 @@ class MqttInvokeActionOpHandler extends InvokeActionOpHandler {
     }
 
     static isApplicable(form) {
-        if (form.href.startsWith("mqtt")) {
-            return true;
-        }
-        return false;
+        return form.href.startsWith("mqtt");
     }
 
     static build(thing, form) {
@@ -175,10 +166,7 @@ class MqttObservePropertyOpHandler extends ObservePropertyOpHandler {
     }
 
     static isApplicable(form) {
-        if (form.href.startsWith("mqtt")) {
-            return true;
-        }
-        return false;
+        return form.href.startsWith("mqtt");
     }
 
     static build(thing, form) {
@@ -203,10 +191,7 @@ class MqttSubscribeEventOpHandler extends SubscribeEventOpHandler {
     }
 
     static isApplicable(form) {
-        if (form.href.startsWith("mqtt")) {
-            return true;
-        }
-        return false;
+        return form.href.startsWith("mqtt");
     }
 
     static build(thing, form) {

@@ -59,32 +59,20 @@ class ThingProperty extends Property {
       }
     }
 
-    const observeModes = this.ops["observeproperty"];
-    for (const form of observeModes) {
-      for (const protocolImpl of observePropertyHandlers) {
-        if (protocolImpl.isApplicable(form)) {
-          this.observePropertyHandler = protocolImpl.build(device, form);
+    const applyPropertyHandler = (propertyType, properyHandlers, destinationPropertyHandlerName) => {
+      for (const form of this.ops[propertyType]) {
+        for (const protocolImpl of properyHandlers) {
+          if (protocolImpl.isApplicable(form)) {
+            this[destinationPropertyHandlerName] = protocolImpl.build(device, form);
+            return;
+          }
         }
       }
     }
 
-    const pollModes = this.ops["readproperty"];
-    for (const form of pollModes) {
-      for (const protocolImpl of readPropertyHandlers) {
-        if (protocolImpl.isApplicable(form)) {
-          this.readPropertyHandler = protocolImpl.build(device, form);
-        }
-      }
-    }
-
-    const writeModes = this.ops["writeproperty"];
-    for (const form of writeModes) {
-      for (const protocolImpl of writePropertyHandlers) {
-        if (protocolImpl.isApplicable(form)) {
-          this.writePropertyHandler = protocolImpl.build(device, form);
-        }
-      }
-    }
+    applyPropertyHandler('observeproperty', observePropertyHandlers, 'observePropertyHandler');
+    applyPropertyHandler('readproperty', readPropertyHandlers, 'readPropertyHandler');
+    applyPropertyHandler('writeproperty', writePropertyHandlers, 'writePropertyHandler');
 
     if (this.observePropertyHandler) {
       this.observePropertyHandler.observeProperty((response) => {

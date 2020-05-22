@@ -7,75 +7,77 @@ class ThingDescription {
     }
 }
 
+const UnimlementedMethodExceprion = (className, methodName) => new Error(`[${className}]: Inimplemented '${methodName}' method.`);
+
 class LoadDeviceHandler {
     static isApplicable(uri) {
-        throw 'Unimplemented';
+        throw UnimlementedMethodExceprion('LoadDeviceHandler', 'isApplicable');
     }
     static loadDevice(adapter, uri) {
-        throw 'Unimplemented';
+        throw UnimlementedMethodExceprion('LoadDeviceHandler', 'loadDevice');
     }
 }
 
 class Connection {
     cancel() {
-        throw 'Unimplemented';
+        throw UnimlementedMethodExceprion('Connection', 'cancel');
     }
 }
 
 class Subscription {
     cancel() {
-        throw 'Unimplemented';
+        throw UnimlementedMethodExceprion('Subscription', 'cancel');
     }
 }
 
 class OpHandler {
     static isApplicable(form) {
-        throw 'Unimplemented';
+        throw UnimlementedMethodExceprion('OpHandler', 'isApplicable');
     }
     static build(thing, form) {
-        throw 'Unimplemented';
+        throw UnimlementedMethodExceprion('OpHandler', 'build');
     }
 }
 
 class ReadPropertyOpHandler extends OpHandler {
     readProperty() {
-        throw 'Unimplemented';
+        throw UnimlementedMethodExceprion('ReadPropertyOpHandler', 'readProperty');
     }
 }
 
 class WritePropertyOpHandler extends OpHandler {
     writeProperty(data) {
-        throw 'Unimplemented';
+        throw UnimlementedMethodExceprion('WritePropertyOpHandler', 'writeProperty');
     }
 }
 
 class ObservePropertyOpHandler extends OpHandler {
     observeProperty(callback) {
-        throw 'Unimplemented';
+        throw UnimlementedMethodExceprion('ObservePropertyOpHandler', 'observeProperty');
     }
 }
 
 class UnobservePropertyOpHandler extends OpHandler {
     readProperty() {
-        throw 'Unimplemented';
+        throw UnimlementedMethodExceprion('UnobservePropertyOpHandler', 'readProperty');
     }
 }
 
 class InvokeActionOpHandler extends OpHandler {
     invokeAction(data, uriVariables) {
-        throw 'Unimplemented';
+        throw UnimlementedMethodExceprion('InvokeActionOpHandler', 'invokeAction');
     }
 }
 
 class SubscribeEventOpHandler extends OpHandler {
     observeProperty(callback) {
-        throw 'Unimplemented';
+        throw UnimlementedMethodExceprion('SubscribeEventOpHandler', 'observeProperty');
     }
 }
 
 class UnsubscribeEventOpHandler extends OpHandler {
     readProperty() {
-        throw 'Unimplemented';
+        throw UnimlementedMethodExceprion('UnsubscribeEventOpHandler', 'readProperty');
     }
 }
 
