@@ -11,16 +11,16 @@ const {
 
 var mqtt = require('mqtt');
 
-function createOrGetClient(thing, uri) {
+function createOrGetConnection(thing, uri) {
     return new Promise((resolve, reject) => {
         if (thing.connections[uri]) {
             resolve(thing.connections[uri]);
+            return;
         }
 
-        var client = mqtt.connect(uri);
-
+        let client = mqtt.connect(uri);
         client.on('connect', function () {
-            thing.connections[uri] = client;
+            thing.connections[uri]= new MqttConnection(client);
             resolve(client);
         });
 
@@ -84,8 +84,8 @@ class MqttWritePropertyOpHandler extends WritePropertyOpHandler {
     }
 
     writeProperty(data) {
-        return createOrGetClient(this.thing, this.hostname)
-            .then(client => client.publish(this.path, JSON.stringify(data)));
+        return createOrGetConnection(this.thing, this.hostname)
+            .then(connection => connection.client.publish(this.path, JSON.stringify(data)));
     }
 
     static isApplicable(form) {
@@ -110,8 +110,8 @@ class MqttInvokeActionOpHandler extends InvokeActionOpHandler {
     }
 
     invokeAction(data, uriVariables = {}) {
-        return createOrGetClient(this.thing, this.hostname)
-            .then(client => client.publish(this.path, JSON.stringify(data)));
+        return createOrGetConnection(this.thing, this.hostname)
+            .then(connection => connection.client.publish(this.path, JSON.stringify(data)));
     }
 
     static isApplicable(form) {
@@ -161,8 +161,8 @@ class MqttObservePropertyOpHandler extends ObservePropertyOpHandler {
     }
 
     observeProperty(callback) {
-        return createOrGetClient(this.thing, this.hostname)
-            .then(client => new MqttSubscription(client, this.path, callback));
+        return createOrGetConnection(this.thing, this.hostname)
+            .then(connection => new MqttSubscription(connection, this.path, callback));
     }
 
     static isApplicable(form) {
@@ -186,8 +186,8 @@ class MqttSubscribeEventOpHandler extends SubscribeEventOpHandler {
     }
 
     subscribeEvent(callback) {
-        return createOrGetClient(this.thing, this.hostname)
-            .then(client => new MqttSubscription(client, this.path, callback));
+        return createOrGetConnection(this.thing, this.hostname)
+            .then(connection => new MqttSubscription(connection, this.path, callback));
     }
 
     static isApplicable(form) {
