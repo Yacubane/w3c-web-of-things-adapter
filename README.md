@@ -7,25 +7,22 @@ This is an adapter add-on for the [Mozilla WebThings Gateway](https://github.com
 
 This project aims to implement basic HTTP binding covered in W3C WoT Specification:
 [HTTP binding assertions](https://www.w3.org/TR/wot-thing-description/#http-binding-assertions)
-
-Whats more, project aims to cover example sequences of interations from WoT binding templates document:
 [Example interations](https://www.w3.org/TR/2020/NOTE-wot-binding-templates-20200130/#appendix-example-sequences)
 
-Finally, with this project, there should be possible to create new devices using some WoT implementations (like [Eclipse Thingweb](https://github.com/eclipse/thingweb.node-wot)) and expose them easily in Mozilla Gateway.
+Whats more, project aims to cover other protocols (like MQTT) with similar API as HTTP one (communication with same JSONs as in HTTP)
 
-## Developing in W3C WoT API
-We recommend using [Eclipse Thingweb](https://github.com/eclipse/thingweb.node-wot) for developing in WoT API. This implementation of WoT is based on bindings and examples from W3C's documents.
+Finally, with this project, there should be possible to create new devices using some WoT implementations (like [Eclipse Thingweb](https://github.com/eclipse/thingweb.node-wot)) and expose them easily in Mozilla Gateway.
 
 ## Supporting protocol
 - HTTP
 - MQTT
 
+## Developing in W3C WoT API
+We recommend using [Eclipse Thingweb](https://github.com/eclipse/thingweb.node-wot) for developing in WoT API. This implementation of WoT is based on bindings and examples from W3C's documents.
+
 ## How to add new protocol handling?
+1. Create file `handler-<protocol_name>.js` with implementation method from `handlers-skeleleton.js`
+2. Import new handler to `handlers-default.js`
 
-Step one:  
-Create file `handler-<protocol_name>.js` with implementation method from `handlers-skeleleton.js`
-
-Step two:  
-Import new handler to `handlers-default.js`
-
-Done!
+## About project
+This project was started as a project for Internet of Things AGH UST university course. 
