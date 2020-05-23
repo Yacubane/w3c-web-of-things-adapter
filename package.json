@@ -1,9 +1,9 @@
 {
   "name": "w3c-web-of-things-adapter",
   "display_name": "W3C Web of Things adapter",
-  "version": "0.4.6",
+  "version": "0.0.1",
   "description": "Native web thing support",
-  "author": "Mozilla IoT",
+  "author": "AGH UST",
   "main": "index.js",
   "scripts": {
     "lint": "eslint ."
@@ -14,14 +14,14 @@
     "adapter",
     "wot"
   ],
-  "homepage": "https://github.com/mozilla-iot/thing-url-adapter",
+  "homepage": "https://github.com/jakubdybczak/w3c-web-of-things-adapter",
   "license": "MPL-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mozilla-iot/thing-url-adapter.git"
+    "url": "https://github.com/jakubdybczak/w3c-web-of-things-adapter.git"
   },
   "bugs": {
-    "url": "https://github.com/mozilla-iot/thing-url-adapter/issues"
+    "url": "https://github.com/jakubdybczak/w3c-web-of-things-adapter/issues"
   },
   "files": [
     "LICENSE",
@@ -33,7 +33,8 @@
     "handlers-skeleton.js",
     "handlers-default.js",
     "handlers-http.js",
-    "handlers-mqtt.js"
+    "handlers-mqtt.js",
+    "transformer.js"
   ],
   "moziot": {
     "api": {
