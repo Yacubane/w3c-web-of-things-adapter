@@ -1,5 +1,10 @@
-class W3CTransformer {
 
+class W3CTransformer {
+  /**
+   * Transform W3C Web of Things json data format to Mozilla Web of Things data format.
+   * @param {JSON} data 
+   * @returns {JSON}
+   */
   static transformData(data) {
     for(let actionName in data.actions) {
       let action = data.actions[actionName];

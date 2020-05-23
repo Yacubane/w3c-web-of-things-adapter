@@ -1,26 +1,22 @@
 const {
-    ThingDescription, LoadDeviceHandler,
-    Connection, Subscription, OpHandler,
+    ThingDescription,
+    LoadDeviceHandler,
+    Subscription,
     ReadPropertyOpHandler,
     WritePropertyOpHandler,
     ObservePropertyOpHandler,
-    UnobservePropertyOpHandler,
     InvokeActionOpHandler,
-    SubscribeEventOpHandler,
-    UnsubscribeEventOpHandler
+    SubscribeEventOpHandler
 } = require('./handlers-skeleton.js');
 
 const W3CTransformer = require('./transformer.js');
-
-const fetch = require('node-fetch');
 const URITemplate = require('urijs/src/URITemplate');
+const fetch = require('node-fetch');
+const POOLING_INTERVAL = 5000;
 
 class HttpLoadDeviceHandler extends LoadDeviceHandler {
     static isApplicable(uri) {
-        if (uri.startsWith("http")) {
-            return true;
-        }
-        return false;
+        return uri.startsWith("http");
     }
     static loadDevice(adapter, uri) {
         return fetch(uri, { headers: { Accept: 'application/json' } })
@@ -29,7 +25,7 @@ class HttpLoadDeviceHandler extends LoadDeviceHandler {
                 let data = JSON.parse(res);
                 data = W3CTransformer.transformData(data);
                 return new ThingDescription(uri, res, data);
-            });
+            }).catch(console.error);
     }
 }
 
@@ -40,26 +36,11 @@ class HttpWritePropertyOpHandler extends WritePropertyOpHandler {
     }
 
     writeProperty(data) {
-        return fetch(this.href, {
-            method: 'PUT',
-            headers: {
-                'Content-type': 'application/json',
-                Accept: 'application/json',
-            },
-            body: JSON.stringify(data),
-        }).then((res) => {
-            return res.json();
-        }).then((response) => {
-            return response;
-        }).catch((e) => {
-        });
+        return HttpPropertyAction.propertyHandler(this.href, 'PUT', data);
     }
 
     static isApplicable(form) {
-        if (form.href.startsWith("http") && !form.subprotocol) {
-            return true;
-        }
-        return false;
+        return form.href.startsWith("http") && !form.subprotocol;
     }
 
     static build(thing, form) {
@@ -74,24 +55,11 @@ class HttpReadPropertyOpHandler extends ReadPropertyOpHandler {
     }
 
     readProperty() {
-        return fetch(this.href, {
-            method: 'GET',
-            headers: {
-                'Content-type': 'application/json',
-                Accept: 'application/json',
-            },
-        }).then((res) => {
-            return res.json();
-        }).then((response) => {
-            return response;
-        });
+        return HttpPropertyAction.propertyHandler(this.href, 'GET');
     }
 
     static isApplicable(form) {
-        if (form.href.startsWith("http") && !form.subprotocol) {
-            return true;
-        }
-        return false;
+        return form.href.startsWith("http") && !form.subprotocol;
     }
 
     static build(thing, form) {
@@ -110,21 +78,15 @@ class HttpInvokeActionOpHandler extends InvokeActionOpHandler {
         uri = uri.expand(uriVariables);
         return fetch(uri, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/json',
-            },
+            headers: HttpPropertyAction.defaultHeaders,
             body: JSON.stringify(data),
         }).then((res) => {
             return res.json();
-        })
+        }).catch(console.error);
     }
 
     static isApplicable(form) {
-        if (form.href.startsWith("http") && !form.subprotocol) {
-            return true;
-        }
-        return false;
+        return form.href.startsWith("http") && !form.subprotocol;
     }
 
     static build(thing, form) {
@@ -141,26 +103,21 @@ class HttpLongPollingSubscription extends Subscription {
         this.active = true;
         this._start();
     }
+
     _start() {
         fetch(this.href, {
             method: 'GET',
-            headers: {
-                'Content-type': 'application/json',
-                Accept: 'application/json',
-            },
+            headers: HttpPropertyAction.defaultHeaders,
         }).then((res) => {
             return res.json();
         }).then((response) => {
-            if (this.active) {
-                this.callback(response);
-                this._start();
-            }
-        }).catch((e) => {
-            if (this.active) {
-                this._start();
-            }
+            if (this.active) this.callback(response);
+        }).catch(console.error)
+        .finally(() => {
+            if (this.active) setTimeout(this._start, POOLING_INTERVAL);
         });
     }
+
     cancel() {
         this.active = false;
     }
@@ -179,10 +136,7 @@ class HttpLongPollingObservePropertyOpHandler extends ObservePropertyOpHandler {
     }
 
     static isApplicable(form) {
-        if (form.href.startsWith("http") && form.subprotocol == "longpoll") {
-            return true;
-        }
-        return false;
+        return form.href.startsWith("http") && form.subprotocol == "longpoll";
     }
 
     static build(thing, form) {
@@ -197,20 +151,37 @@ class HttpLongPollingSubscribeEventOpHandler extends SubscribeEventOpHandler {
     }
 
     subscribeEvent(callback) {
-        return new Promise((resolve, reject) => {
-            return new HttpLongPollingSubscription(this.href, callback);
-        })
+        return new Promise((resolve, reject) => new HttpLongPollingSubscription(this.href, callback));
     }
 
     static isApplicable(form) {
-        if (form.href.startsWith("http") && form.subprotocol == "longpoll") {
-            return true;
-        }
-        return false;
+        return form.href.startsWith("http") && form.subprotocol == "longpoll";
     }
 
     static build(thing, form) {
         return new HttpLongPollingSubscribeEventOpHandler(form.href);
+    }
+}
+
+class HttpPropertyAction {
+    static defaultHeaders = {
+        'Content-type': 'application/json',
+        'Accept': 'application/json',
+    }
+
+    static propertyHandler(href, method, data = null) {
+        let options = {
+            method: method,
+            headers: HttpPropertyAction.defaultHeaders,
+        };
+
+        if (!!data) options['body'] = JSON.stringify(data);
+
+        return fetch(href, options).then((res) => {
+            return res.json();
+        }).then((response) => {
+            return response;
+        }).catch(console.error);
     }
 }
 

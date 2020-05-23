@@ -15,3 +15,17 @@ Finally, with this project, there should be possible to create new devices using
 
 ## Developing in W3C WoT API
 We recommend using [Eclipse Thingweb](https://github.com/eclipse/thingweb.node-wot) for developing in WoT API. This implementation of WoT is based on bindings and examples from W3C's documents.
+
+## Supporting protocol
+- HTTP
+- MQTT
+
+## How to add new protocol handling?
+
+Step one:  
+Create file `handler-<protocol_name>.js` with implementation method from `handlers-skeleleton.js`
+
+Step two:  
+Import new handler to `handlers-default.js`
+
+Done!
