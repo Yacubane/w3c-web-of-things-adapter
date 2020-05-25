@@ -42,7 +42,6 @@
       "min": 2,
       "max": 2
     },
-    "enabled": true,
     "plugin": true,
     "exec": "{nodeLoader} {path}",
     "config": {
