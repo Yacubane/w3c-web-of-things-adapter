@@ -114,7 +114,7 @@ class HttpLongPollingSubscription extends Subscription {
             if (this.active) this.callback(response);
         }).catch(console.error)
         .finally(() => {
-            if (this.active) setTimeout(this._start, POOLING_INTERVAL);
+            if (this.active) setTimeout(this._start.bind(this), POOLING_INTERVAL);
         });
     }
 

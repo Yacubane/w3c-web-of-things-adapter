@@ -206,14 +206,8 @@ class ThingURLDevice extends Device {
           break;
         }
       }
-
-
-      // If there's no websocket endpoint, poll the device for updates.
-      // eslint-disable-next-line no-lonely-if
-      if (!this.scheduledUpdate) {
-        Promise.all(this.propertyPromises).then(() => this.poll());
-      }
     }
+    Promise.all(this.propertyPromises).then(() => this.poll());
   }
 
   cancelSubscriptions() {
