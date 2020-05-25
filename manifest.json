@@ -1,6 +1,6 @@
 {
   "author": "AGH UST",
-  "description": "W3C Web of Things adapter",
+  "description": "Basic W3C WoT protocol binding support",
   "gateway_specific_settings": {
     "webthings": {
       "exec": "{nodeLoader} {path}",

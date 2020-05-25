@@ -2,7 +2,7 @@
   "name": "w3c-web-of-things-adapter",
   "display_name": "W3C Web of Things adapter",
   "version": "0.0.1",
-  "description": "Native web thing support",
+  "description": "Basic W3C WoT protocol binding support",
   "author": "AGH UST",
   "main": "index.js",
   "scripts": {
@@ -12,7 +12,8 @@
     "mozilla",
     "iot",
     "adapter",
-    "wot"
+    "wot",
+    "webofthings"
   ],
   "homepage": "https://github.com/jakubdybczak/w3c-web-of-things-adapter",
   "license": "MPL-2.0",
@@ -32,8 +33,8 @@
     "w3c-wot-adapter.js",
     "handlers-skeleton.js",
     "handlers-default.js",
-    "handlers-http.js",
-    "handlers-mqtt.js",
+    "handler-http.js",
+    "handler-mqtt.js",
     "transformer.js"
   ],
   "moziot": {
