@@ -17,7 +17,7 @@ Finally, with this project, there should be possible to create new devices using
 * HTTP
 * MQTT
 
-## Example usage
+## Example HTTP usage
 
 1. Make sure your devices are available via url, for example:
 <p align="center">
@@ -37,6 +37,28 @@ Finally, with this project, there should be possible to create new devices using
 </p>
 
 4. Now you can use your W3C Web of Things devices via Mozilla WebThings Gateway.
+
+## Example MQTT usage
+
+1. Make sure your devices are available via mqtt protocol, for example (screen from MQTTfx):
+<p align="center">
+    <img alt="Available devices" title="Available devices" src="https://github.com/jakubdybczak/w3c-web-of-things-adapter/blob/master/readme_assets/addon_configuration_mqtt_1.png">
+</p>
+
+2. Go to addon configuration page and add url where addon should search for device that you want to add (remember about protocol):
+
+<p align="center">
+    <img alt="Addon configuration" title="Adding urls to addon" src="https://github.com/jakubdybczak/w3c-web-of-things-adapter/blob/master/readme_assets/addon_configuration_mqtt_2.png">
+</p>
+
+3. Go back to *Things* page on WebThings Gateway page and add new thing:
+
+<p align="center">
+    <img alt="Device usage" title="Using new thing on Things page" width=572 height=212 src="https://github.com/jakubdybczak/w3c-web-of-things-adapter/blob/master/readme_assets/addon_configuration_3.png">
+</p>
+
+4. Now you can use your W3C Web of Things devices via Mozilla WebThings Gateway.
+
 
 ## Prove of concept project
 
